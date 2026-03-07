@@ -43,9 +43,12 @@ export default function FeedbackPage({ onNavigate }: { onNavigate: (url: string)
             const entries = fd.entries || [];
             setEntries(entries);
             entries.forEach((e: Entry) => {
-              fetch(`/api/likes?type=feedback&targetId=${e.id}`)
+              fetch(`/api/likes?type=feedback&targetId=${e.id}`, { credentials: "include" })
                 .then(r => r.json())
-                .then(d => setLikeCounts(prev => ({ ...prev, [e.id]: d.count || 0 })));
+                .then(d => {
+                  setLikeCounts(prev => ({ ...prev, [e.id]: d.count || 0 }));
+                  if (d.userLiked) setLiked(prev => { const n = new Set(prev); n.add(e.id); return n; });
+                });
             });
           });
         }

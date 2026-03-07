@@ -20,5 +20,8 @@ export async function getLikesHandler(req, res) {
   const { type, targetId } = req.query;
   if (!['changelog', 'feedback'].includes(type) || !targetId) return res.status(400).json({ error: 'Invalid request' });
   const count = db.prepare('SELECT COUNT(*) as count FROM likes WHERE type = ? AND target_id = ?').get(type, targetId)?.count || 0;
-  res.json({ count });
+  const userLiked = req.session?.user
+    ? !!db.prepare('SELECT id FROM likes WHERE type = ? AND target_id = ? AND user_id = ?').get(type, targetId, req.session.user.id)
+    : false;
+  res.json({ count, userLiked });
 }
