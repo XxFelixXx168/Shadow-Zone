@@ -308,7 +308,7 @@ function GameCard({ game, isFav, onPlay, onOptions }: {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      whileHover={{ scale: 1.28 }}
+      whileHover={{ scale: 1.28,zIndex: 10 }}
       whileTap={{ scale: 0.97 }}
       transition={{ type: "spring", stiffness: 380, damping: 20 }}
       className="relative cursor-pointer group rounded-xl overflow-hidden border-2 border-white/5 hover:border-white/40 transition-colors duration-150"
