@@ -99,17 +99,17 @@ function FluidCanvas() {
           0,
           `hsla(${b.hue}, ${b.saturation}%, ${b.lightness}%, ${
             b.opacity * 2.2
-          })`
+          })`,
         );
         grad.addColorStop(
           0.4,
           `hsla(${b.hue}, ${b.saturation}%, ${b.lightness}%, ${
             b.opacity * 1.1
-          })`
+          })`,
         );
         grad.addColorStop(
           1,
-          `hsla(${b.hue}, ${b.saturation}%, ${b.lightness}%, 0)`
+          `hsla(${b.hue}, ${b.saturation}%, ${b.lightness}%, 0)`,
         );
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, w, h);
@@ -185,303 +185,356 @@ function TypingDots() {
   );
 }
 
-function ScreenWidget({
-  onSendToAI,
-  onClose,
-}: {
-  onSendToAI: (base64: string, mime: string) => void;
-  onClose: () => void;
-}) {
-  const [pos, setPos] = useState({
-    x: window.innerWidth - 340,
-    y: window.innerHeight - 320,
-  });
-  const [dragging, setDragging] = useState(false);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const [screenshot, setScreenshot] = useState<string | null>(null);
-  const [hasStream, setHasStream] = useState(false);
-  const [capturing, setCapturing] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+function ScreenWidget({ onClose }: { onClose: () => void }) {
+  const pipWinRef = useRef<any>(null);
 
   useEffect(() => {
     return () => {
-      streamRef.current?.getTracks().forEach((t) => t.stop());
+      try {
+        pipWinRef.current?.close();
+      } catch {}
     };
   }, []);
 
-  const startShare = async () => {
+  const openPiP = async () => {
+    const pip = (window as any).documentPictureInPicture;
+    if (!pip?.requestWindow) {
+      alert(
+        "Picture-in-Picture is not supported in this browser. Try Chrome 116+.",
+      );
+      onClose();
+      return;
+    }
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: 5 } as any,
+      const pipWin = await pip.requestWindow({
+        width: 340,
+        height: 520,
+        disallowReturnToOpener: false,
+        preferInitialWindowPlacement: true,
       });
-      streamRef.current = stream;
-      setHasStream(true);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-      stream.getVideoTracks()[0].addEventListener("ended", () => {
-        streamRef.current = null;
-        setHasStream(false);
-        setScreenshot(null);
+      pipWinRef.current = pipWin;
+      const doc = pipWin.document;
+
+      doc.documentElement.style.cssText =
+        "height:100%;margin:0;padding:0;box-sizing:border-box;";
+      doc.body.style.cssText =
+        "margin:0;padding:0;height:100%;background:#080d1a;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:flex;flex-direction:column;overflow:hidden;";
+
+      const style = doc.createElement("style");
+      style.textContent = `
+        * { box-sizing:border-box; }
+        ::-webkit-scrollbar { width:4px; }
+        ::-webkit-scrollbar-track { background:transparent; }
+        ::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.1);border-radius:4px; }
+
+        .header {
+          display:flex;align-items:center;justify-content:space-between;
+          padding:10px 12px;flex-shrink:0;
+          background:rgba(255,255,255,0.02);
+          border-bottom:1px solid rgba(255,255,255,0.05);
+        }
+        .header-left { display:flex;align-items:center;gap:8px; }
+        .status-dot {
+          width:7px;height:7px;border-radius:50%;
+          background:rgba(255,255,255,0.2);flex-shrink:0;
+          transition:background 0.3s,box-shadow 0.3s;
+        }
+        .status-dot.on { background:#4ade80;box-shadow:0 0 8px #4ade80; }
+        .header-title { font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:rgba(255,255,255,0.7); }
+        .header-right { display:flex;align-items:center;gap:4px; }
+        .icon-btn {
+          width:26px;height:26px;border-radius:7px;border:none;
+          background:transparent;color:rgba(255,255,255,0.35);
+          cursor:pointer;display:flex;align-items:center;justify-content:center;
+          transition:background 0.15s,color 0.15s;padding:0;
+        }
+        .icon-btn:hover { background:rgba(255,255,255,0.07);color:rgba(255,255,255,0.8); }
+        .icon-btn.danger:hover { background:rgba(239,68,68,0.15);color:rgba(255,100,100,0.9); }
+
+        .body { flex:1;display:flex;flex-direction:column;gap:8px;padding:10px;overflow:hidden;min-height:0; }
+
+        .preview-wrap {
+          border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.07);
+          background:#000;flex-shrink:0;position:relative;
+        }
+        .preview-wrap video { width:100%;max-height:150px;object-fit:cover;display:block; }
+        .preview-label {
+          position:absolute;bottom:6px;left:8px;
+          font-size:9px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;
+          color:rgba(255,255,255,0.4);background:rgba(0,0,0,0.5);
+          padding:2px 6px;border-radius:4px;
+        }
+
+        .placeholder {
+          display:flex;flex-direction:column;align-items:center;justify-content:center;
+          gap:8px;padding:20px 12px;text-align:center;flex-shrink:0;
+          border-radius:10px;border:1px dashed rgba(255,255,255,0.08);
+          background:rgba(255,255,255,0.02);
+        }
+        .placeholder-icon { color:rgba(255,255,255,0.15); }
+        .placeholder p { font-size:11px;color:rgba(255,255,255,0.3);margin:0;line-height:1.4; }
+
+        .input-wrap {
+          position:relative;flex-shrink:0;
+        }
+        textarea {
+          width:100%;padding:9px 36px 9px 11px;border-radius:10px;
+          border:1px solid rgba(255,255,255,0.08);
+          background:rgba(255,255,255,0.04);
+          color:rgba(255,255,255,0.85);font-size:12px;outline:none;resize:none;
+          font-family:inherit;line-height:1.4;min-height:56px;max-height:100px;
+          transition:border-color 0.15s;
+        }
+        textarea:focus { border-color:rgba(100,160,255,0.35); }
+        textarea::placeholder { color:rgba(255,255,255,0.2); }
+        .send-icon-btn {
+          position:absolute;bottom:8px;right:8px;
+          width:22px;height:22px;border-radius:6px;border:none;
+          background:rgba(80,140,255,0.25);color:rgba(160,200,255,0.9);
+          cursor:pointer;display:flex;align-items:center;justify-content:center;
+          transition:background 0.15s;padding:0;
+        }
+        .send-icon-btn:hover { background:rgba(80,140,255,0.45); }
+        .send-icon-btn:disabled { opacity:0.3;cursor:not-allowed; }
+
+        .action-row { display:flex;gap:7px;flex-shrink:0; }
+        .btn {
+          flex:1;padding:8px 10px;border-radius:9px;font-size:11px;font-weight:600;
+          cursor:pointer;font-family:inherit;transition:all 0.15s;
+          display:flex;align-items:center;justify-content:center;gap:5px;border:none;
+        }
+        .btn:disabled { opacity:0.35;cursor:not-allowed; }
+        .btn-share {
+          background:rgba(255,255,255,0.05);
+          border:1px solid rgba(255,255,255,0.09)!important;
+          color:rgba(255,255,255,0.7);
+        }
+        .btn-share:hover:not(:disabled) { background:rgba(255,255,255,0.09); }
+        .btn-share.active {
+          background:rgba(239,68,68,0.12);
+          border-color:rgba(239,68,68,0.25)!important;
+          color:rgba(255,110,110,0.9);
+        }
+
+        .response-wrap {
+          flex:1;overflow-y:auto;border-radius:10px;
+          border:1px solid rgba(255,255,255,0.06);
+          background:rgba(255,255,255,0.025);
+          padding:10px 11px;min-height:0;
+        }
+        .response-text {
+          font-size:12px;color:rgba(255,255,255,0.75);line-height:1.65;white-space:pre-wrap;
+        }
+        .response-error { color:rgba(255,110,110,0.8); }
+
+        .thinking-row {
+          display:flex;align-items:center;gap:6px;
+          font-size:11px;color:rgba(255,255,255,0.3);flex-shrink:0;
+          padding:2px 0;
+        }
+        .dot-pulse span {
+          display:inline-block;width:3px;height:3px;border-radius:50%;
+          background:rgba(255,255,255,0.3);animation:dp 1s infinite;
+        }
+        .dot-pulse span:nth-child(2){animation-delay:0.18s}
+        .dot-pulse span:nth-child(3){animation-delay:0.36s}
+        @keyframes dp{0%,100%{opacity:0.15;transform:scale(0.8)}50%{opacity:1;transform:scale(1)}}
+
+        .hint { font-size:9px;color:rgba(255,255,255,0.15);text-align:center;flex-shrink:0;padding:2px 0; }
+      `;
+      doc.head.appendChild(style);
+
+      // SVG icons as strings cause why not
+      const monitorSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>`;
+      const stopSvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>`;
+      const sendSvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9l20-7z"/></svg>`;
+      const xSvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>`;
+      const screenSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>`;
+
+      doc.body.innerHTML = `
+        <div class="header">
+          <div class="header-left">
+            <div class="status-dot" id="pip-dot"></div>
+            <span class="header-title">AI Screen Assistant</span>
+          </div>
+          <div class="header-right">
+            <button class="icon-btn danger" id="pip-close" title="Close">${xSvg}</button>
+          </div>
+        </div>
+        <div class="body">
+          <div id="pip-placeholder" class="placeholder">
+            <div class="placeholder-icon">${monitorSvg.replace('width="13"', 'width="28"').replace('height="13"', 'height="28"')}</div>
+            <p>Share your screen<br>so AI can see it</p>
+          </div>
+          <div class="preview-wrap" id="pip-preview" style="display:none">
+            <video id="pip-video" muted autoplay playsinline></video>
+            <span class="preview-label">Live Preview</span>
+          </div>
+          <div class="action-row">
+            <button class="btn btn-share" id="pip-share-btn">${screenSvg} Share Screen</button>
+          </div>
+          <div class="input-wrap">
+            <textarea id="pip-input" placeholder="Ask about your screen... (Enter to send)" disabled></textarea>
+            <button class="send-icon-btn" id="pip-send-btn" disabled title="Ask AI">${sendSvg}</button>
+          </div>
+          <div class="thinking-row" id="pip-thinking" style="display:none">
+            Thinking <span class="dot-pulse"><span></span><span></span><span></span></span>
+          </div>
+          <div class="response-wrap" id="pip-response-wrap" style="display:none">
+            <div class="response-text" id="pip-response"></div>
+          </div>
+          <p class="hint" id="pip-hint" style="display:none">Window stays open while you browse other tabs</p>
+        </div>
+      `;
+
+      let pipStream: MediaStream | null = null;
+      let pipCaptureVideo: HTMLVideoElement | null = null;
+
+      const dot = doc.getElementById("pip-dot")!;
+      const placeholder = doc.getElementById("pip-placeholder")!;
+      const preview = doc.getElementById("pip-preview")!;
+      const video = doc.getElementById("pip-video") as HTMLVideoElement;
+      const shareBtn = doc.getElementById("pip-share-btn")!;
+      const input = doc.getElementById("pip-input") as HTMLTextAreaElement;
+      const sendBtn = doc.getElementById("pip-send-btn") as HTMLButtonElement;
+      const responseWrap = doc.getElementById("pip-response-wrap")!;
+      const responseEl = doc.getElementById("pip-response")!;
+      const thinkingEl = doc.getElementById("pip-thinking")!;
+      const hintEl = doc.getElementById("pip-hint")!;
+      const closeBtn = doc.getElementById("pip-close")!;
+
+      closeBtn.addEventListener("click", () => {
+        pipStream?.getTracks().forEach((t) => t.stop());
+        pipWin.close();
+        onClose();
       });
-    } catch {}
-  };
 
-  const capture = () => {
-    if (!videoRef.current || !streamRef.current) return;
-    setCapturing(true);
-    const video = videoRef.current;
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext("2d")?.drawImage(video, 0, 0);
-    setScreenshot(canvas.toDataURL("image/png"));
-    setCapturing(false);
-  };
+      const setSharing = (active: boolean) => {
+        dot.className = active ? "status-dot on" : "status-dot";
+        placeholder.style.display = active ? "none" : "flex";
+        preview.style.display = active ? "block" : "none";
+        shareBtn.innerHTML = active
+          ? `${stopSvg} Stop Sharing`
+          : `${screenSvg} Share Screen`;
+        shareBtn.className = active ? "btn btn-share active" : "btn btn-share";
+        input.disabled = !active;
+        sendBtn.disabled = !active;
+        hintEl.style.display = active ? "block" : "none";
+      };
 
-  const sendToAI = () => {
-    if (!screenshot) return;
-    onSendToAI(screenshot.split(",")[1], "image/png");
-    setScreenshot(null);
-  };
+      shareBtn.addEventListener("click", async () => {
+        if (pipStream) {
+          pipStream.getTracks().forEach((t) => t.stop());
+          pipStream = null;
+          pipCaptureVideo = null;
+          setSharing(false);
+          return;
+        }
+        try {
+          pipStream = await pipWin.navigator.mediaDevices.getDisplayMedia({
+            video: { frameRate: 5 },
+          });
+          const cv = doc.createElement("video") as HTMLVideoElement;
+          cv.muted = true;
+          cv.autoplay = true;
+          cv.playsInline = true;
+          cv.srcObject = pipStream;
+          await cv.play().catch(() => {});
+          pipCaptureVideo = cv;
+          video.srcObject = pipStream;
+          await video.play().catch(() => {});
+          pipStream!.getVideoTracks()[0].addEventListener("ended", () => {
+            pipStream = null;
+            pipCaptureVideo = null;
+            setSharing(false);
+          });
+          setSharing(true);
+        } catch {}
+      });
 
-  const onMouseDown = (e: React.MouseEvent) => {
-    setDragging(true);
-    setDragOffset({ x: e.clientX - pos.x, y: e.clientY - pos.y });
+      const doAsk = async () => {
+        if (!pipStream || !pipCaptureVideo) return;
+        const q =
+          input.value.trim() || "What do you see on my screen? Be concise.";
+        const cv = pipCaptureVideo;
+        if (!cv.videoWidth) return;
+
+        const maxW = 1280;
+        const scale = cv.videoWidth > maxW ? maxW / cv.videoWidth : 1;
+        const w = Math.round(cv.videoWidth * scale);
+        const h = Math.round(cv.videoHeight * scale);
+        const canvas = doc.createElement("canvas") as HTMLCanvasElement;
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext("2d")?.drawImage(cv, 0, 0, w, h);
+        const frame = canvas.toDataURL("image/jpeg", 0.85).split(",")[1];
+
+        sendBtn.disabled = true;
+        thinkingEl.style.display = "flex";
+        responseWrap.style.display = "none";
+        responseEl.textContent = "";
+        responseEl.className = "response-text";
+
+        try {
+          const res = await fetch("/api/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              prompt: q,
+              model: "meta-llama/llama-4-scout-17b-16e-instruct",
+              groqMessages: [
+                {
+                  role: "system",
+                  content:
+                    "You are a helpful AI assistant looking at a screenshot. Answer concisely. For educational/factual questions format as:\nAnswer: [answer]\n[brief explanation]",
+                },
+                {
+                  role: "user",
+                  content: [
+                    { type: "text", text: q },
+                    {
+                      type: "image_url",
+                      image_url: { url: `data:image/jpeg;base64,${frame}` },
+                    },
+                  ],
+                },
+              ],
+            }),
+          });
+          const data = await res.json();
+          responseEl.textContent = data.response || "No response.";
+          responseWrap.style.display = "block";
+        } catch {
+          responseEl.textContent = "Couldn't reach AI. Try again.";
+          responseEl.className = "response-text response-error";
+          responseWrap.style.display = "block";
+        } finally {
+          sendBtn.disabled = !pipStream;
+          thinkingEl.style.display = "none";
+        }
+      };
+
+      sendBtn.addEventListener("click", doAsk);
+      input.addEventListener("keydown", (e: KeyboardEvent) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          doAsk();
+        }
+      });
+
+      pipWin.addEventListener("pagehide", () => {
+        pipStream?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
+        onClose();
+      });
+    } catch {
+      onClose();
+    }
   };
 
   useEffect(() => {
-    if (!dragging) return;
-    const onMove = (e: MouseEvent) =>
-      setPos({ x: e.clientX - dragOffset.x, y: e.clientY - dragOffset.y });
-    const onUp = () => setDragging(false);
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-  }, [dragging, dragOffset]);
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.92, y: 8 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.92, y: 8 }}
-      style={{
-        position: "fixed",
-        left: pos.x,
-        top: pos.y,
-        width: 300,
-        zIndex: 9999,
-        borderRadius: 16,
-        border: "1px solid rgba(255,255,255,0.1)",
-        backdropFilter: "blur(24px)",
-        WebkitBackdropFilter: "blur(24px)",
-        background: "rgba(8, 14, 28, 0.92)",
-        boxShadow:
-          "0 24px 64px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)",
-        userSelect: "none",
-        overflow: "hidden",
-      }}
-    >
-      <div
-        onMouseDown={onMouseDown}
-        style={{
-          padding: "10px 12px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          cursor: "grab",
-          borderBottom: "1px solid rgba(255,255,255,0.06)",
-          background: "rgba(255,255,255,0.02)",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <div
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: "50%",
-              background: hasStream ? "#4ade80" : "rgba(255,255,255,0.2)",
-              boxShadow: hasStream ? "0 0 6px #4ade80" : "none",
-            }}
-          />
-          <span
-            style={{
-              fontSize: 11,
-              color: "rgba(255,255,255,0.75)",
-              fontWeight: 600,
-              letterSpacing: "0.02em",
-            }}
-          >
-            AI — Ask about your screen
-          </span>
-        </div>
-        <button
-          onClick={onClose}
-          style={{
-            background: "transparent",
-            border: "none",
-            cursor: "pointer",
-            color: "rgba(255,255,255,0.35)",
-            padding: 2,
-            display: "flex",
-          }}
-        >
-          <X size={12} />
-        </button>
-      </div>
-
-      <div
-        style={{
-          padding: 12,
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-        }}
-      >
-        <video
-          ref={videoRef}
-          muted
-          style={{
-            width: "100%",
-            borderRadius: 10,
-            display: hasStream ? "block" : "none",
-            border: "1px solid rgba(255,255,255,0.07)",
-            maxHeight: 150,
-            objectFit: "cover",
-            background: "#000",
-          }}
-        />
-
-        {screenshot && (
-          <div style={{ position: "relative" }}>
-            <img
-              src={screenshot}
-              style={{
-                width: "100%",
-                borderRadius: 10,
-                border: "1px solid rgba(255,255,255,0.08)",
-                maxHeight: 150,
-                objectFit: "cover",
-                display: "block",
-              }}
-              alt="screenshot"
-            />
-            <button
-              onClick={() => setScreenshot(null)}
-              style={{
-                position: "absolute",
-                top: 6,
-                right: 6,
-                width: 20,
-                height: 20,
-                borderRadius: "50%",
-                background: "rgba(0,0,0,0.6)",
-                border: "1px solid rgba(255,255,255,0.1)",
-                color: "rgba(255,255,255,0.7)",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <X size={10} />
-            </button>
-          </div>
-        )}
-
-        {!hasStream && !screenshot && (
-          <div style={{ textAlign: "center", padding: "12px 0" }}>
-            <p
-              style={{
-                fontSize: 11,
-                color: "rgba(255,255,255,0.35)",
-                marginBottom: 10,
-              }}
-            >
-              Share your screen so AI can see it
-            </p>
-            <button
-              onClick={startShare}
-              style={{
-                padding: "8px 18px",
-                borderRadius: 10,
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(255,255,255,0.07)",
-                color: "rgba(255,255,255,0.8)",
-                fontSize: 12,
-                cursor: "pointer",
-                fontWeight: 500,
-              }}
-            >
-              Share Screen
-            </button>
-          </div>
-        )}
-
-        <div style={{ display: "flex", gap: 8 }}>
-          {hasStream && !screenshot && (
-            <button
-              onClick={capture}
-              disabled={capturing}
-              style={{
-                flex: 1,
-                padding: "9px",
-                borderRadius: 10,
-                border: "1px solid rgba(255,255,255,0.1)",
-                background: "rgba(255,255,255,0.07)",
-                color: "rgba(255,255,255,0.8)",
-                fontSize: 11,
-                cursor: "pointer",
-                fontWeight: 500,
-              }}
-            >
-              📸 Capture Frame
-            </button>
-          )}
-          {screenshot && (
-            <button
-              onClick={sendToAI}
-              style={{
-                flex: 1,
-                padding: "9px",
-                borderRadius: 10,
-                border: "1px solid rgba(100,160,255,0.35)",
-                background: "rgba(80,140,255,0.15)",
-                color: "rgba(160,200,255,1)",
-                fontSize: 11,
-                cursor: "pointer",
-                fontWeight: 600,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
-              }}
-            >
-              <Send size={11} /> Send to AI
-            </button>
-          )}
-        </div>
-
-        {hasStream && (
-          <p
-            style={{
-              fontSize: 10,
-              color: "rgba(255,255,255,0.2)",
-              textAlign: "center",
-              margin: 0,
-            }}
-          >
-            Keep this window open while browsing other tabs
-          </p>
-        )}
-      </div>
-    </motion.div>
-  );
+    openPiP();
+  }, []);
+  return null;
 }
 
 function MessageBubble({
@@ -675,7 +728,7 @@ export default function AIPage({
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [model, setModel] = useState(
-    () => localStorage.getItem("selectedModel") || "llama-3.1-8b-instant"
+    () => localStorage.getItem("selectedModel") || "llama-3.1-8b-instant",
   );
   const [modelOpen, setModelOpen] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
@@ -686,6 +739,9 @@ export default function AIPage({
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [showScreenWidget, setShowScreenWidget] = useState(false);
+  const handleScreenToggle = async () => {
+    setShowScreenWidget(true);
+  };
   const chatBodyRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -715,17 +771,17 @@ export default function AIPage({
       (_: string, _lang: string, code: string) =>
         `<pre style="background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:12px 14px;overflow-x:auto;font-size:11px;margin:8px 0;font-family:'Courier New',monospace;color:rgba(255,255,255,0.85);white-space:pre-wrap;"><code>${code
           .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")}</code></pre>`
+          .replace(/>/g, "&gt;")}</code></pre>`,
     );
     out = out.replace(
       /`([^`]+)`/g,
-      "<code style=\"background:rgba(0,0,0,0.2);padding:1px 6px;border-radius:4px;font-size:0.88em;font-family:'Courier New',monospace;color:rgba(255,255,255,0.8);\">$1</code>"
+      "<code style=\"background:rgba(0,0,0,0.2);padding:1px 6px;border-radius:4px;font-size:0.88em;font-family:'Courier New',monospace;color:rgba(255,255,255,0.8);\">$1</code>",
     );
     out = out.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
     out = out.replace(/\*(.+?)\*/g, "<em>$1</em>");
     out = out.replace(
       /(https?:\/\/[^\s<]+)/g,
-      '<a href="$1" target="_blank" style="color:var(--foreground);opacity:0.7;text-decoration:underline;text-underline-offset:2px;">$1</a>'
+      '<a href="$1" target="_blank" style="color:var(--foreground);opacity:0.7;text-decoration:underline;text-underline-offset:2px;">$1</a>',
     );
     out = out.replace(/\n/g, "<br>");
     return out;
@@ -734,7 +790,7 @@ export default function AIPage({
   const sendMessage = useCallback(
     async (
       overrideText?: string,
-      overrideImage?: { base64: string; mime: string } | null
+      overrideImage?: { base64: string; mime: string } | null,
     ) => {
       const text = (overrideText ?? input).trim();
       const img = overrideImage !== undefined ? overrideImage : pendingImage;
@@ -837,12 +893,12 @@ export default function AIPage({
               id: Date.now().toString(),
               role: "ai",
               content: formatted,
-            })
+            }),
         );
         setHistory((prev) =>
           [...prev, { role: "assistant" as const, content: aiResponse }].slice(
-            -40
-          )
+            -40,
+          ),
         );
       } catch (err: any) {
         setMessages((prev) => prev.filter((m) => m.id !== "thinking"));
@@ -862,7 +918,7 @@ export default function AIPage({
         inputRef.current?.focus();
       }
     },
-    [input, pendingImage, isFetching, history, model]
+    [input, pendingImage, isFetching, history, model],
   );
 
   const handleRegen = useCallback(() => {
@@ -905,18 +961,25 @@ export default function AIPage({
           </div>
         </div>
 
-        <div className="relative">
-          <button
-            onClick={() => setShowScreenWidget(s => !s)}
-            title="Screen capture"
-            style={{
-              background: "transparent", border: "none", cursor: "pointer", padding: 4, flexShrink: 0,
-              color: showScreenWidget ? "rgba(150,200,255,0.9)" : "rgba(255,255,255,0.25)",
-              transition: "color 0.2s", display: "flex", alignItems: "center",
-            }}
-          >
-            <Monitor size={14} />
-          </button>
+          <div className="relative flex items-center gap-2">
+            <button
+              onClick={handleScreenToggle}
+              title="AI Screen Assistant"
+              style={{
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                padding: 4,
+                color: showScreenWidget
+                  ? "rgba(150,200,255,0.9)"
+                  : "rgba(255,255,255,0.25)",
+                transition: "color 0.2s",
+                display: "flex",
+                alignItems: "center",
+              }}
+            >
+              <Monitor size={14} />
+            </button>
           <AnimatePresence>
             {modelOpen && (
               <motion.div
@@ -1085,12 +1148,20 @@ export default function AIPage({
             className="flex-1 bg-transparent text-sm text-foreground placeholder:text-foreground/30 outline-none border-none"
           />
           <button
-            onClick={() => setShowScreenWidget(s => !s)}
+            onClick={handleScreenToggle}
             title="Screen capture"
             style={{
-              background: "transparent", border: "none", cursor: "pointer", padding: 4, flexShrink: 0,
-              color: showScreenWidget ? "rgba(150,200,255,0.9)" : "rgba(255,255,255,0.25)",
-              transition: "color 0.2s", display: "flex", alignItems: "center",
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              padding: 4,
+              flexShrink: 0,
+              color: showScreenWidget
+                ? "rgba(150,200,255,0.9)"
+                : "rgba(255,255,255,0.25)",
+              transition: "color 0.2s",
+              display: "flex",
+              alignItems: "center",
             }}
           >
             <Monitor size={14} />
@@ -1121,10 +1192,7 @@ export default function AIPage({
 
       <AnimatePresence>
         {showScreenWidget && (
-          <ScreenWidget
-            onSendToAI={(base64, mime) => sendMessage("What do you see in this screenshot? Be concise.", { base64, mime })}
-            onClose={() => setShowScreenWidget(false)}
-          />
+          <ScreenWidget onClose={() => setShowScreenWidget(false)} />
         )}
       </AnimatePresence>
     </div>
