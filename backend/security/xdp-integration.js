@@ -59,3 +59,4 @@ export async function getXDPStats() {
 export function getXDPBlockCount() {
   return xdpBlocks.size;
 }
+
