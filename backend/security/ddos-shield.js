@@ -979,3 +979,4 @@ class DDoSShield {
 export const ddosShield = (client) => {
   return new DDoSShield(client);
 };
+
